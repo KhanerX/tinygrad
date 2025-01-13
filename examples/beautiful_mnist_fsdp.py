@@ -24,7 +24,7 @@ if __name__ == "__main__":
   GPUS = tuple(f'{default_device}:{i}' for i in range(getenv("GPUS", 2)))
   X_train, Y_train, X_test, Y_test = mnist()
 
-  Device.DEFAULT = "CLANG" #initialize the parameters on CPU 
+  Device.DEFAULT = "CLANG" #initialize the parameters on CPU
   model = Model()
   opt = fsdp(nn.optim.Adam(nn.state.get_parameters(model)), GPUS)
   Device.DEFAULT = default_device #restore the default device

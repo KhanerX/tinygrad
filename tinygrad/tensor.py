@@ -959,10 +959,12 @@ class Tensor(SimpleMathTrait):
     for t0 in reversed(toposorted):
       if t0.grad is None: raise RuntimeError(f"tensor {t0} has no grad")
       token = _METADATA.set(dataclasses.replace(md, backward=True) if (md := t0._ctx.metadata) is not None else None)
-      grads = t0._ctx.backward(t0.grad.lazydata)
+      grads = [None] * len(t0._ctx.parents)
+      if any(parent.requires_grad for parent in t0._ctx.parents):
+        grads = t0._ctx.backward(t0.grad.lazydata)
+        grads = [Tensor(g, device=self.device, requires_grad=False) if g is not None else None
+          for g in ([grads] if len(t0._ctx.parents) == 1 else grads)]
       _METADATA.reset(token)
-      grads = [Tensor(g, device=self.device, requires_grad=False) if g is not None else None
-        for g in ([grads] if len(t0._ctx.parents) == 1 else grads)]
       for t, g in zip(t0._ctx.parents, grads):
         if g is not None and t.requires_grad:
           assert g.shape == t.shape, f"grad shape must match tensor shape, {g.shape!r} != {t.shape!r}"
