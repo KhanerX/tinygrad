@@ -123,6 +123,9 @@ _METADATA: contextvars.ContextVar[Optional[Metadata]] = contextvars.ContextVar("
 class GlobalCounters:
   global_ops: ClassVar[int] = 0
   global_mem: ClassVar[int] = 0
+  from collections import defaultdict
+  global_device_mem: ClassVar[dict[str, int]] = defaultdict(int)
+  global_device_mem_max: ClassVar[dict[str, int]] = defaultdict(int)
   time_sum_s: ClassVar[float] = 0.0
   kernel_count: ClassVar[int] = 0
   mem_used: ClassVar[int] = 0   # NOTE: this is not reset

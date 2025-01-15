@@ -120,12 +120,22 @@ class Buffer:
       self._buf: Any = self.allocator._offset(self.base._buf, self.nbytes, self.offset)
     else:
       self._buf = opaque if opaque is not None else self.allocator.alloc(self.nbytes, self.options)
-      if not self.device.startswith("DISK"): GlobalCounters.mem_used += self.nbytes
+      if not (self.device.startswith("DISK") or self.device.startswith("PYTHON")): 
+        GlobalCounters.mem_used += self.nbytes
+        GlobalCounters.global_device_mem[self.device] += self.nbytes
+        GlobalCounters.global_device_mem_max[self.device] = max(GlobalCounters.global_device_mem_max[self.device], GlobalCounters.global_device_mem[self.device])
+        if(self.device == "CUDA" and self.nbytes > 33000):
+          print(f"alloc {self.nbytes //1000/1000:.1f} MB, MAX: {GlobalCounters.global_device_mem_max[self.device] //1000/1000:.1f} MB")
+
     return self
   def deallocate(self):
     assert self.is_allocated(), "buffer must be allocated to deallocate"
     if self._base is None and (self.options is None or self.options.external_ptr is None):
-      if not self.device.startswith("DISK"): GlobalCounters.mem_used -= self.nbytes
+      if not (self.device.startswith("DISK") or self.device.startswith("PYTHON")): 
+        GlobalCounters.mem_used -= self.nbytes
+        GlobalCounters.global_device_mem[self.device] -= self.nbytes
+        if(self.device == "CUDA" and self.nbytes > 33000):
+          print(f"free {self.nbytes //1000/1000:.1f} MB")
       self.allocator.free(self._buf, self.nbytes, self.options)
       del self._buf
   def __reduce__(self):
