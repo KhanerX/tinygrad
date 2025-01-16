@@ -12,9 +12,6 @@ from tinygrad.ops import buffers, all_metadata
 from typing import Type, Callable
 from tinygrad.tensor import _METADATA 
 
-# Function to gather all the shards before a fwd and bwd, and scatter the gradients after bwd
-
-
 class Checkpoint(Function):
   @classmethod
   def apply(fxn:Type[Function], *x:Tensor, **kwargs) -> Tensor:
@@ -52,21 +49,29 @@ def fsdp(obj, devices: tuple[str]):
     if(param.shape[0] == 1 or prod(param.shape) <= 1):
       param.to_(devices)
     else:
-      param.shard_(devices, axis=0)
+      param.to_(devices)
+      
   return obj
 
 class Model:
   def __init__(self):
     self.layers: List[Callable[[Tensor], Tensor]] = [
-      nn.Linear(2500, 2500, bias=False),
-      nn.Linear(2500, 2500, bias=False),
+      nn.Linear(784, 2500, bias=False), Tensor.relu,
+      nn.Linear(2500, 2000, bias=False), Tensor.relu,
+      nn.Linear(2000, 1500, bias=False), Tensor.relu,
+      nn.Linear(1500, 1000, bias=False), Tensor.relu,
+      nn.Linear(1000, 500, bias=False), Tensor.relu,
+      nn.Linear(500, 10, bias=False),
     ]
 
   def __call__(self, x:Tensor) -> Tensor: 
     x = x.flatten(1)
     for i, layer in enumerate(self.layers):
       print(f"\nLinear {i}, Input shape: {x.shape} \n ")
-      x = layer(x)
+      if(i == 0 or i % 2) or True:
+        x = layer(x)
+      else:
+        x = checkpoint(x, fn=layer)
       print(f"In Memory: {GlobalCounters.global_device_mem['CUDA'] //1000/1000:.1f} MB")
       print("---")
     
@@ -77,22 +82,23 @@ if __name__ == "__main__":
   #GPUS = tuple(f'{Device.DEFAULT}:{i}' for i in range(getenv("GPUS", 2)))
   GPUS = ("CLANG", "CUDA")
 
+  X_train, Y_train, X_test, Y_test = mnist()
+  # we shard the test data on axis 0
+  X_test.shard_(GPUS, axis=0)
+  Y_test.shard_(GPUS, axis=0)
   Device.DEFAULT = "CLANG" #initialize the parameters on CPU
   print(f"\n Model \n ")
   model = Model()
   opt = fsdp(nn.optim.Adam(nn.state.get_parameters(model)), GPUS)
-  for param in opt.params:
-    param.lazydata.placement = "replicate"
   print(f"\n End of modle init \n ")
   Device.DEFAULT = "CUDA"
   
   def train_step() -> Tensor:
     with Tensor.train():
       opt.zero_grad()
-      Xt = Tensor.randint(128, 2500, requires_grad=False).shard_(GPUS, axis=0)
-      print("Training Data")
-      # TODO: this "gather" of samples is very slow. will be under 5s when this is fixed
-      loss = model(Xt).sum()
+      samples = Tensor.randint(getenv("BS", 64), high=X_train.shape[0])
+      Xt, Yt = X_train[samples].shard_(GPUS, axis=0), Y_train[samples].shard_(GPUS, axis=0)  # we shard the data on axis 0
+      loss = model(Xt).sparse_categorical_crossentropy(Yt)
       loss.backward(retain_graph=True)
       print(f"In Memory: {GlobalCounters.global_device_mem['CUDA'] //1000/1000:.1f} MB")
       # for n, t in reversed(list(nn.state.get_state_dict(opt).items())):
@@ -104,4 +110,9 @@ if __name__ == "__main__":
       opt.step()
       return loss
     
-  train_step()
+  def get_test_acc() -> Tensor: return (model(X_test).argmax(axis=1) == Y_test).mean()*100
+
+  test_acc = float('nan')
+  for i in (t:=trange(getenv("STEPS", 70))):
+    loss = train_step()
+    t.set_description(f"loss: {loss.item():6.2f}")
