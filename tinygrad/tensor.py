@@ -970,7 +970,7 @@ class Tensor(SimpleMathTrait):
       token = _METADATA.set(dataclasses.replace(md, backward=True) if (md := ctx.metadata) is not None else None)
       grads = ctx.backward(t0.grad.lazydata)
       _METADATA.reset(token)
-      grads = [Tensor(g, device=self.device, requires_grad=False).realize() if g is not None else None
+      grads = [Tensor(g, device=self.device, requires_grad=False) if g is not None else None
         for g in ([grads] if len(ctx.parents) == 1 else grads)]
       for t, g in zip(ctx.parents, grads):
         if g is not None and t.requires_grad:

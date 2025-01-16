@@ -4,7 +4,7 @@ from tinygrad.helpers import argsort
 from tinygrad.dtype import dtypes, DType, sum_acc_dtype
 from tinygrad.ops import Ops, resolve, sint, UOp
 from tinygrad.tensor import Function
-from tinygrad.multi import MultiLazyBuffer
+from tinygrad.multi import MultiLazyBuffer, to_sharded
 
 class Contiguous(Function):
   def forward(self, x:UOp) -> UOp: return x.contiguous()
@@ -105,11 +105,20 @@ class Add(Function):
 class Mul(Function):
   def forward(self, x:UOp, y:UOp) -> UOp:
     self.x, self.y = x, y
+    if(isinstance(self.y, MultiLazyBuffer) and self.y.placement == 'replicate'): self.y.placement='scatter'
+    if(isinstance(self.x, MultiLazyBuffer) and self.x.placement == 'replicate'): self.x.placement='scatter'
     return x * y
 
   def backward(self, grad_output:UOp) -> tuple[UOp|None, UOp|None]:
-    return (self.y * grad_output) if self.needs_input_grad[0] else None, \
-           (self.x * grad_output) if self.needs_input_grad[1] else None
+    xgrad = self.x * grad_output
+    ygrad = self.y * grad_output
+    if(isinstance(self.x, MultiLazyBuffer) and self.x.placement == 'scatter' and self.x.axis is not None):
+      xgrad = self.y * MultiLazyBuffer(to_sharded(grad_output.all_gather().lbs, self.x.axis, self.x.bounds), self.x.axis, self.x.real)
+    if(isinstance(self.y, MultiLazyBuffer) and self.y.placement == 'scatter' and self.y.axis is not None):
+      ygrad = self.x * MultiLazyBuffer(to_sharded(grad_output.all_gather().lbs, self.y.axis, self.y.bounds), self.y.axis, self.y.real)
+
+    return xgrad if self.needs_input_grad[0] else None, \
+           ygrad if self.needs_input_grad[1] else None
 
 class IDiv(Function):
   def forward(self, x:UOp, y:UOp) -> UOp: return x // y
@@ -134,15 +143,9 @@ class Where(Function):
 class Sum(Function):
   def forward(self, x:UOp, axis:tuple[int, ...]) -> UOp:
     self.input_shape = x.shape
-    if(isinstance(x, MultiLazyBuffer) and x.axis is not None):
-      self.shard_axis = x.axis
-      self.shard_bounds = x.bounds
-      print(f"Summing {self.shard_axis=} {self.shard_bounds=}")
     return x.r(Ops.ADD, axis)
 
   def backward(self, grad_output:UOp) -> UOp: 
-    if(isinstance(grad_output, MultiLazyBuffer) and getattr(self, "shard_axis", None) is not None):
-      return grad_output.expand(self.input_shape, shard_axis=self.shard_axis, shard_bounds=self.shard_bounds)
     return grad_output.expand(self.input_shape)
 
 class Prod(Function):
