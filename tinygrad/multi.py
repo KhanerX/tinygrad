@@ -146,7 +146,7 @@ class MultiLazyBuffer(MathTrait):
       return MultiLazyBuffer([x if r else x.const_like(0) for x,r in zip(self.lbs, self.real)], self.axis)
     return MultiLazyBuffer([x.pad(arg) for x in self.lbs], self.axis, self.real)
 
-  def expand(self, arg:tuple[sint, ...]):
+  def expand(self, arg:tuple[sint, ...], shard_axis:int|None=None, shard_bounds:tuple[tuple[sint, sint], ...]|None=None):
     # NOTE: this assert isn't needed, sharded axis can have dim 1
     assert self.axis is None or arg[self.axis] == self.shape[self.axis], f"expand not supported on sharded axis {arg=}"
     return MultiLazyBuffer([x.expand(self._shape_to_single_shard(arg, x)) for x in self.lbs], self.axis, self.real)
@@ -172,12 +172,8 @@ class MultiLazyBuffer(MathTrait):
 
   def all_gather(self) -> 'MultiLazyBuffer':
     if self.axis is None: return self
-    self.lazydata =  [self.copy_to_device(lb.device) for lb in self.lbs]
-    self.axis = None
-    return self
+    return MultiLazyBuffer([self.copy_to_device(lb.device) for lb in self.lbs], None, self.real)
 
   def scatter(self, axis: int | None = None, bounds: tuple[tuple[int, int], ...] | None = None) -> 'MultiLazyBuffer':
     if axis is None or bounds is None: return self
-    self.lazydata = to_sharded(self.lbs, axis, bounds)
-    self.axis = axis
-    return self
+    return MultiLazyBuffer(to_sharded(self.lbs, axis, bounds), axis, self.real)

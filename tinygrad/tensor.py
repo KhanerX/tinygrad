@@ -966,10 +966,11 @@ class Tensor(SimpleMathTrait):
     for t0 in reversed(toposorted):
       if t0.grad is None: raise RuntimeError(f"tensor {t0} has no grad")
       ctx = cast(Function, t0._ctx)
+      print(ctx);
       token = _METADATA.set(dataclasses.replace(md, backward=True) if (md := ctx.metadata) is not None else None)
       grads = ctx.backward(t0.grad.lazydata)
       _METADATA.reset(token)
-      grads = [Tensor(g, device=self.device, requires_grad=False) if g is not None else None
+      grads = [Tensor(g, device=self.device, requires_grad=False).realize() if g is not None else None
         for g in ([grads] if len(ctx.parents) == 1 else grads)]
       for t, g in zip(ctx.parents, grads):
         if g is not None and t.requires_grad:

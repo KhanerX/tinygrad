@@ -19,6 +19,7 @@ class AllGather(Function):
     self.bounds = x.bounds
     return x.all_gather()
   def backward(self, grad_output:MultiLazyBuffer) -> MultiLazyBuffer:
+    grad_output.detach()
     rs = grad_output.scatter(self.input_axis, self.bounds)
     return rs
 
@@ -49,10 +50,6 @@ class Checkpoint(Function):
     return detached_input.grad.lazydata;
 
 # (temporary) Layer overrides to apply the AllGather in forward to the parameters that are going to be sharded
-class FSDPLinear(nn.Linear):
-  def __call__(self, x:Tensor) -> Tensor: return x.linear(
-    AllGather.apply(self.weight),
-  )
 
 def checkpoint(x:Tensor, fn:Callable[[Tensor], Tensor]) -> Tensor:
   return Checkpoint.apply(x, fn=fn)
@@ -70,7 +67,9 @@ def fsdp(obj, devices: tuple[str]):
 class Model:
   def __init__(self):
     self.layers: List[Callable[[Tensor], Tensor]] = [
-        FSDPLinear(2500, 2500, bias=False),
+        nn.Linear(28*28, 2500, bias=False),
+        nn.Linear(2500, 2500, bias=False),
+        nn.Linear(2500, 10, bias=False),
       ]
 
   def __call__(self, x:Tensor) -> Tensor: 
@@ -88,6 +87,10 @@ if __name__ == "__main__":
   #GPUS = tuple(f'{Device.DEFAULT}:{i}' for i in range(getenv("GPUS", 2)))
   GPUS = ("CLANG", "CUDA")
 
+  X_train, Y_train, X_test, Y_test = mnist()
+  # we shard the test data on axis 0
+  X_test.shard_(GPUS, axis=0)
+  Y_test.shard_(GPUS, axis=0)
   Device.DEFAULT = "CLANG" #initialize the parameters on CPU
   print(f"\n Model \n ")
   model = Model()
@@ -98,18 +101,12 @@ if __name__ == "__main__":
   def train_step() -> Tensor:
     with Tensor.train():
       opt.zero_grad()
-      Xt = Tensor.randint(128, 2500, requires_grad=False).shard_(GPUS, axis=0)
-      print("Training Data")
+      samples = Tensor.randint(getenv("BS", 512), high=X_train.shape[0])
+      Xt, Yt = X_train[samples].shard_(GPUS, axis=0), Y_train[samples].shard_(GPUS, axis=0)  # we shard the data on axis 0
       # TODO: this "gather" of samples is very slow. will be under 5s when this is fixed
-      loss = model(Xt).sum()
+      loss = model(Xt).sparse_categorical_crossentropy(Yt)
       loss.backward()
-      print(f"In Memory: {GlobalCounters.global_device_mem['CUDA'] //1000/1000:.1f} MB")
-      for n, t in reversed(list(nn.state.get_state_dict(opt).items())):
-        if(t.requires_grad):
-          print(f"Gradient {n}: {t.grad.shape}")
-          t.grad.realize()
-          print(f"In Memory: {GlobalCounters.global_device_mem['CUDA'] //1000/1000:.1f} MB")
-          print("---")
+      opt.step()
       return loss
     
   train_step()

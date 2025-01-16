@@ -4,6 +4,7 @@ from tinygrad.helpers import argsort
 from tinygrad.dtype import dtypes, DType, sum_acc_dtype
 from tinygrad.ops import Ops, resolve, sint, UOp
 from tinygrad.tensor import Function
+from tinygrad.multi import MultiLazyBuffer
 
 class Contiguous(Function):
   def forward(self, x:UOp) -> UOp: return x.contiguous()
@@ -133,9 +134,16 @@ class Where(Function):
 class Sum(Function):
   def forward(self, x:UOp, axis:tuple[int, ...]) -> UOp:
     self.input_shape = x.shape
+    if(isinstance(x, MultiLazyBuffer) and x.axis is not None):
+      self.shard_axis = x.axis
+      self.shard_bounds = x.bounds
+      print(f"Summing {self.shard_axis=} {self.shard_bounds=}")
     return x.r(Ops.ADD, axis)
 
-  def backward(self, grad_output:UOp) -> UOp: return grad_output.expand(self.input_shape)
+  def backward(self, grad_output:UOp) -> UOp: 
+    if(isinstance(grad_output, MultiLazyBuffer) and getattr(self, "shard_axis", None) is not None):
+      return grad_output.expand(self.input_shape, shard_axis=self.shard_axis, shard_bounds=self.shard_bounds)
+    return grad_output.expand(self.input_shape)
 
 class Prod(Function):
   def forward(self, x:UOp, axis:tuple[int, ...]) -> UOp:
