@@ -108,18 +108,12 @@ class Mul(Function):
     return x * y
 
   def backward(self, grad_output:UOp) -> tuple[UOp|None, UOp|None]:
-    if(not self.needs_input_grad[0]):
-      xgrad = None
-    elif(self.x.placement == 'replicate' and self.x.axis is not None):
-      xgrad = self.y * MultiLazyBuffer(to_sharded(grad_output.all_gather().lbs, self.x.axis, self.x.bounds), self.x.axis, self.x.real)
-    else:
+    xgrad = None
+    if(self.needs_input_grad[0]):
       xgrad = self.y * grad_output
 
-    if(not self.needs_input_grad[1]):
-      ygrad = None
-    elif(self.y.placement == 'replicate' and self.y.axis is not None):
-      ygrad = self.x * MultiLazyBuffer(to_sharded(grad_output.all_gather().lbs, self.y.axis, self.y.bounds), self.y.axis, self.y.real)
-    else:
+    ygrad = None
+    if(self.needs_input_grad[1]):
       ygrad = self.x * grad_output
 
     return xgrad, ygrad
@@ -183,9 +177,15 @@ class Max(Function):
 class Expand(Function):
   def forward(self, x:UOp, shape:tuple[int, ...]) -> UOp:
     self.expanded_axis = tuple(i for i, (si, so) in enumerate(zip(x.shape, shape)) if resolve(si != so))
+    if(isinstance(x, MultiLazyBuffer) and (x.placement == 'replicate') and (x.axis is not None)):
+      self.shard_axis = x.axis
+      self.shard_bounds = x.bounds
+    
     return x.expand(shape)
 
   def backward(self, grad_output:UOp) -> UOp:
+    if(isinstance(grad_output, MultiLazyBuffer) and getattr(self, 'shard_axis', None) is not None):
+      return grad_output.cast(sum_acc_dtype(grad_output.dtype)).r(Ops.ADD, self.expanded_axis, shard_axis=self.shard_axis, shard_bounds=self.shard_bounds).cast(grad_output.dtype)
     return grad_output.cast(sum_acc_dtype(grad_output.dtype)).r(Ops.ADD, self.expanded_axis).cast(grad_output.dtype)
 
 class Reshape(Function):

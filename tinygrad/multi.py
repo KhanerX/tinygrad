@@ -93,7 +93,7 @@ class MultiLazyBuffer(MathTrait):
     assert all_same([x.device for x in msrcs]), f"all buffers must have the same device {[x.device for x in msrcs]}"
 
     # NOTE: they all have to share an axis, we always choose [-1]
-    axis, bounds = axes[-1] if len(axes := dedup([(x.axis, x.bounds) for x in msrcs if x.axis is not None and x.placement != "replicate"])) else (None, None)
+    axis, bounds = axes[-1] if len(axes := dedup([(x.axis, x.bounds) for x in msrcs if x.axis is not None])) else (None, None)
     srcs:list[list[UOp]] = []
     not_all_real = not all(all(mlb.real) for mlb in msrcs)
     new_real = [all(transposed) for transposed in zip(*[mlb.real for mlb in msrcs])] if not_all_real else self.real
@@ -111,7 +111,7 @@ class MultiLazyBuffer(MathTrait):
 
   def r(self, op:Ops, axis:tuple[int, ...], shard_axis:int|None=None, shard_bounds:tuple[tuple[sint, sint], ...]|None=None) -> MultiLazyBuffer:
     if self.axis is not None and self.axis in axis:
-      if(shard_axis is not None):
+      if(shard_axis):
         #reduce scatter 
         new_lbs = [[] for _ in range(len(self.lbs))]
         for lb in self.lbs:
@@ -166,8 +166,8 @@ class MultiLazyBuffer(MathTrait):
   def expand(self, arg:tuple[sint, ...], shard_axis:int|None=None, shard_bounds:tuple[tuple[sint, sint], ...]|None=None):
     # NOTE: this assert isn't needed, sharded axis can have dim 1
     assert self.axis is None or arg[self.axis] == self.shape[self.axis], f"expand not supported on sharded axis {arg=}"
-    if(shard_axis is not None):
-      return MultiLazyBuffer(to_sharded([x.expand(self._shape_to_single_shard(arg, x)) for x in self.lbs], shard_axis, shard_bounds), shard_axis, self.real, self.placement)
+    if(self.placement == 'replicate'):
+      return MultiLazyBuffer([x.expand(self._shape_to_single_shard(arg, x)) for x in self.all_gather().lbs], None, self.real, placement='scatter')
     else:
       return MultiLazyBuffer([x.expand(self._shape_to_single_shard(arg, x)) for x in self.lbs], self.axis, self.real, self.placement)
 
