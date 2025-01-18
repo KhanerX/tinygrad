@@ -135,7 +135,7 @@ if __name__ == "__main__":
 
   parser = argparse.ArgumentParser()
   parser.add_argument("--num_iterations", type=int, default=5, help="number of iterations to run") 
-  parser.add_argument("--batch_size", type=int, default=4, help="batch size")
+  parser.add_argument("--batch_size", type=int, default=8, help="batch size")
   parser.add_argument("--sequence_length", type=int, default=64, help="sequence length")
   parser.add_argument("--skip_test", action="store_true", help="skip test")
   args = parser.parse_args()

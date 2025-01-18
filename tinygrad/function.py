@@ -139,7 +139,7 @@ class Sum(Function):
       self.shard_bounds = x.bounds
     return x.r(Ops.ADD, axis)
 
-  def backward(self, grad_output:UOp) -> UOp:
+  def backward(self, grad_output:UOp | MultiLazyBuffer) -> UOp | MultiLazyBuffer:
     if (isinstance(grad_output, MultiLazyBuffer) and getattr(self, 'shard_axis', None) is not None):
       return grad_output.expand(self.input_shape, shard_axis=self.shard_axis, shard_bounds=self.shard_bounds)
     return grad_output.expand(self.input_shape)
@@ -167,14 +167,14 @@ class Max(Function):
 
 # NOTE: this is sum in reverse
 class Expand(Function):
-  def forward(self, x:UOp, shape:tuple[int, ...]) -> UOp:
+  def forward(self, x:UOp | MultiLazyBuffer, shape:tuple[int, ...]) -> UOp | MultiLazyBuffer:
     self.expanded_axis = tuple(i for i, (si, so) in enumerate(zip(x.shape, shape)) if resolve(si != so))
     if (isinstance(x, MultiLazyBuffer) and (x.placement == 'replicate') and (x.axis is not None)):
       self.shard_axis = x.axis
       self.shard_bounds = x.bounds
     return x.expand(shape)
 
-  def backward(self, grad_output:UOp) -> UOp:
+  def backward(self, grad_output:UOp | MultiLazyBuffer) -> UOp | MultiLazyBuffer:
     if (isinstance(grad_output, MultiLazyBuffer) and getattr(self, 'shard_axis', None) is not None):
       return grad_output.cast(sum_acc_dtype(grad_output.dtype)) \
         .r(Ops.ADD, self.expanded_axis, shard_axis=self.shard_axis, shard_bounds=self.shard_bounds) \
