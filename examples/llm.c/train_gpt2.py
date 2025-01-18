@@ -88,7 +88,7 @@ class GPT:
     self.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
 
   def load_pretrained(self):
-    weights = nn.state.torch_load(fetch(f'https://huggingface.co/gpt2-large/resolve/main/pytorch_model.bin')) #Loading Large model that OOMs on 12GB VRAM with BS 8 without FSDP
+    weights = nn.state.torch_load(fetch(f'https://huggingface.co/gpt2-large/resolve/main/pytorch_model.bin')) #Loading Large model that OOMs on 12GB VRAM with BS 16 without FSDP
     transposed = ('attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight')
     for k in weights:
       if k == "wte.weight":
@@ -135,7 +135,7 @@ if __name__ == "__main__":
 
   parser = argparse.ArgumentParser()
   parser.add_argument("--num_iterations", type=int, default=5, help="number of iterations to run") 
-  parser.add_argument("--batch_size", type=int, default=8, help="batch size")
+  parser.add_argument("--batch_size", type=int, default=16, help="batch size")
   parser.add_argument("--sequence_length", type=int, default=64, help="sequence length")
   parser.add_argument("--skip_test", action="store_true", help="skip test")
   args = parser.parse_args()
