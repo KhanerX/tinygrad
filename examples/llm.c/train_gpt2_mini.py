@@ -56,24 +56,12 @@ class CausalSelfAttention:
     y = self.c_proj(y)
     return y
 
-class MLP:
-  def __init__(self, config:GPTConfig):
-    self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd)
-    self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd)
-
-  def __call__(self, x:Tensor) -> Tensor:
-    return self.c_proj(self.c_fc(x).gelu())
-
 class Block:
   def __init__(self, config:GPTConfig):
-    self.ln_1 = nn.LayerNorm(config.n_embd)
     self.attn = CausalSelfAttention(config)
-    self.ln_2 = nn.LayerNorm(config.n_embd)
-    self.mlp = MLP(config)
 
   def __call__(self, x:Tensor):
-    x = x + self.attn(self.ln_1(x))
-    x = x + self.mlp(self.ln_2(x))
+    x = x + self.attn(x)
     return x
 
 class GPT:
@@ -139,8 +127,7 @@ if __name__ == "__main__":
   B, T = args.batch_size, args.sequence_length
   assert 1 <= T <= 1024
   Device.DEFAULT = "CLANG" #initialize the parameters on CPU1
-  model = GPT(GPTConfig(n_layer=36, n_head=20, n_embd=1280))
-  model.load_pretrained()
+  model = GPT(GPTConfig(n_layer=1, n_head=2, n_embd=12))
 
   # init the tokenizer
   enc = tiktoken.get_encoding("gpt2")
@@ -176,9 +163,8 @@ if __name__ == "__main__":
   x, y = next(data_iter) # we'll overfit this batch below
   optimizer = nn.optim.AdamW(nn.state.get_parameters(model), lr=1e-4, weight_decay=0)
   Device.DEFAULT = "CUDA" #initialize the parameters on CPU1
-  GPUS = ("CUDA:0", "CUDA:1")
+  GPUS = ("CLANG", "CUDA")
   fsdp(optimizer, GPUS)
-  @TinyJit
   def step(x, y):
     x.shard_(GPUS, axis=0)
     y.shard_(GPUS, axis=0)
@@ -203,7 +189,7 @@ if __name__ == "__main__":
   if not args.skip_test:
     start = "<|endoftext|>"
     start_ids = encode(start)
-    x = (Tensor(start_ids)[None, ...]).shard_(("CUDA:0", "CUDA:1"), axis=0)
+    x = (Tensor(start_ids)[None, ...]).shard_(("CLANG", "CUDA"), axis=0)
     max_new_tokens = 16
     temperature = 1.0
     top_k = 40
