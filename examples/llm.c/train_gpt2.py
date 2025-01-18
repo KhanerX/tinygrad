@@ -88,7 +88,7 @@ class GPT:
     self.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
 
   def load_pretrained(self):
-    weights = nn.state.torch_load(fetch(f'https://huggingface.co/gpt2-large/resolve/main/pytorch_model.bin')) #Loading Large model that OOMs on 12GB VRAM without FSDP
+    weights = nn.state.torch_load(fetch(f'https://huggingface.co/gpt2-large/resolve/main/pytorch_model.bin')) #Loading Large model that OOMs on 12GB VRAM with BS 8 without FSDP
     transposed = ('attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight')
     for k in weights:
       if k == "wte.weight":

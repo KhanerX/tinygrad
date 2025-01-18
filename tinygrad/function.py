@@ -4,7 +4,7 @@ from tinygrad.helpers import argsort
 from tinygrad.dtype import dtypes, DType, sum_acc_dtype
 from tinygrad.ops import Ops, resolve, sint, UOp
 from tinygrad.tensor import Function
-from tinygrad.multi import MultiLazyBuffer, to_sharded
+from tinygrad.multi import MultiLazyBuffer
 
 class Contiguous(Function):
   def forward(self, x:UOp) -> UOp: return x.contiguous()
@@ -132,18 +132,17 @@ class Where(Function):
 # ************* reduce ops *************
 
 class Sum(Function):
-  def forward(self, x:UOp, axis:tuple[int, ...]) -> UOp:
+  def forward(self, x:UOp | MultiLazyBuffer, axis:tuple[int, ...]) -> UOp | MultiLazyBuffer:
     self.input_shape = x.shape
-    if(isinstance(x, MultiLazyBuffer) and x.axis in axis): 
-       self.shard_axis = x.axis
-       self.shard_bounds = x.bounds
+    if (isinstance(x, MultiLazyBuffer) and x.axis in axis):
+      self.shard_axis = x.axis
+      self.shard_bounds = x.bounds
     return x.r(Ops.ADD, axis)
 
-  def backward(self, grad_output:UOp) -> UOp: 
-    if(isinstance(grad_output, MultiLazyBuffer) and getattr(self, 'shard_axis', None) is not None):
+  def backward(self, grad_output:UOp) -> UOp:
+    if (isinstance(grad_output, MultiLazyBuffer) and getattr(self, 'shard_axis', None) is not None):
       return grad_output.expand(self.input_shape, shard_axis=self.shard_axis, shard_bounds=self.shard_bounds)
-    else:
-      return grad_output.expand(self.input_shape)
+    return grad_output.expand(self.input_shape)
 
 class Prod(Function):
   def forward(self, x:UOp, axis:tuple[int, ...]) -> UOp:
@@ -170,14 +169,16 @@ class Max(Function):
 class Expand(Function):
   def forward(self, x:UOp, shape:tuple[int, ...]) -> UOp:
     self.expanded_axis = tuple(i for i, (si, so) in enumerate(zip(x.shape, shape)) if resolve(si != so))
-    if(isinstance(x, MultiLazyBuffer) and (x.placement == 'replicate') and (x.axis is not None)):
+    if (isinstance(x, MultiLazyBuffer) and (x.placement == 'replicate') and (x.axis is not None)):
       self.shard_axis = x.axis
       self.shard_bounds = x.bounds
     return x.expand(shape)
 
   def backward(self, grad_output:UOp) -> UOp:
-    if(isinstance(grad_output, MultiLazyBuffer) and getattr(self, 'shard_axis', None) is not None):
-      return grad_output.cast(sum_acc_dtype(grad_output.dtype)).r(Ops.ADD, self.expanded_axis, shard_axis=self.shard_axis, shard_bounds=self.shard_bounds).cast(grad_output.dtype)
+    if (isinstance(grad_output, MultiLazyBuffer) and getattr(self, 'shard_axis', None) is not None):
+      return grad_output.cast(sum_acc_dtype(grad_output.dtype)) \
+        .r(Ops.ADD, self.expanded_axis, shard_axis=self.shard_axis, shard_bounds=self.shard_bounds) \
+        .cast(grad_output.dtype)
     return grad_output.cast(sum_acc_dtype(grad_output.dtype)).r(Ops.ADD, self.expanded_axis).cast(grad_output.dtype)
 
 class Reshape(Function):
