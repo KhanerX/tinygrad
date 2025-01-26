@@ -3,7 +3,7 @@ import os, functools, platform, time, re, contextlib, operator, hashlib, pickle,
 import urllib.request, subprocess, shutil, math, contextvars, types, copyreg, inspect, importlib
 from dataclasses import dataclass
 from typing import Union, ClassVar, Optional, Iterable, Any, TypeVar, Callable, Sequence, TypeGuard, Iterator, Generic
-
+from collections import defaultdict
 T = TypeVar("T")
 U = TypeVar("U")
 # NOTE: it returns int 1 if x is empty regardless of the type of x
@@ -126,6 +126,8 @@ _METADATA: contextvars.ContextVar[Optional[Metadata]] = contextvars.ContextVar("
 class GlobalCounters:
   global_ops: ClassVar[int] = 0
   global_mem: ClassVar[int] = 0
+  global_device_mem: ClassVar[defaultdict[str, int]] = defaultdict(int)
+  global_device_mem_max: ClassVar[defaultdict[str, int]] = defaultdict(int)
   time_sum_s: ClassVar[float] = 0.0
   kernel_count: ClassVar[int] = 0
   mem_used: ClassVar[int] = 0   # NOTE: this is not reset
