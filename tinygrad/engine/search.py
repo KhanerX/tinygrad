@@ -183,7 +183,7 @@ def beam_search(lin:Kernel, rawbufs:list[Buffer], amt:int, allow_test_size=True,
     raise e
 
   if CACHELEVEL >= 1: diskcache_put("beam_search", key, beam[0][0].applied_opts)
-  if BEAM_DEBUG: print(f"BEAM_SEARCH: final tm={time_to_str(beam[0][1], w=12)}, applied_opts={beam[0][0].applied_opts}")
+  if BEAM_DEBUG: print(f"BEAM_SEARCH: final tm={time_to_str(beam[0][1])}, applied_opts={beam[0][0].applied_opts}")
   return beam[0][0]
 
 def optimize_local_size(_prg:Callable, global_size:list[int], rawbufs:list[Buffer]) -> list[int]:
