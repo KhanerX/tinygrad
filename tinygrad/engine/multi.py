@@ -157,5 +157,14 @@ multi_pm = PatternMatcher([
         src=(UPat(Ops.MULTI, name="multi"), ), name="root"), passthrough_multi),
 ])
 
+reorder_copies = PatternMatcher([
+  (UPat(Ops.COPY, src=(UPat(), UPat(Ops.CAST, src=(UPat.var("x")), name="cast"),), name='copy'), 
+   lambda copy, cast, x: x.copy_to_device(copy.device).cast(cast.dtype)),
+  (UPat(Ops.COPY, src=(UPat(), UPat(GroupOp.ALU, src=(UPat.var("a"), UPat.var("b")), name="alu"),), name='copy'), 
+   lambda copy, alu, a, b: a.copy_to_device(copy.device).alu(alu.op, b.copy_to_device(copy.device))),
+  (UPat(Ops.COPY, src=(UPat(), UPat(GroupOp.Movement, name="mov", src=(UPat.var("x")))), name='copy'), 
+   lambda copy, mov, x: x.copy_to_device(copy.device)._mop(mov.op, mov.arg)),
+])
+
 @track_rewrites(named=True)
 def get_multi_map(big_sink:UOp) -> dict[UOp, UOp]: return {k:v for k,v in graph_rewrite_map(big_sink, multi_pm).items() if k is not v}
