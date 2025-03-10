@@ -404,10 +404,10 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
 
   # *** from MultiLazyBuffer ***
 
-  def multi(self, *more:UOp, axis:int|None, real:tuple[bool,...]|None=None):
+  def multi(self, *more:UOp, axis:int|None, real:tuple[bool,...]|None=None, gather:Optional[bool]=None):
     parents = (self,)+more
     assert all_same([x.dtype for x in parents]), "multi parents must have the same dtype"
-    return UOp(Ops.MULTI, self.dtype, parents, (axis, real if real is not None else (True,)*len(parents)))
+    return UOp(Ops.MULTI, self.dtype, parents, (axis, real if real is not None else (True,)*len(parents), gather))
 
   @property
   def bounds(self):
@@ -438,7 +438,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
   @property
   def real_lbs(self): return [lb for lb,r in zip(self.src, self.real) if r]
 
-  def shard(self, devices:tuple[str, ...], axis:Optional[int]=None) -> UOp:
+  def shard(self, devices:tuple[str, ...], axis:Optional[int]=None, gather:Optional[bool]=None) -> UOp:
     if axis is None: lbs = [self] * len(devices)
     else:
       if self.shape[axis] % len(devices) != 0: raise RuntimeError(f"multi axis uneven: {self.shape[axis]=} {axis=} {len(devices)=}")
@@ -449,7 +449,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
       for sz,off in zip(sizes, itertools.accumulate(sizes, initial=0)):
         lbs.append(self.shrink(tuple((0,s) if i != axis else (off,off+sz) for i,s in enumerate(self.shape))))
     sharded_lbs = [lb.copy_to_device(d) for lb,d in zip(lbs, devices)]
-    return UOp.multi(*[lb.contiguous() for lb in sharded_lbs], axis=axis)
+    return UOp.multi(*[lb.contiguous() for lb in sharded_lbs], axis=axis, gather=gather)
 
   # *** from LazyBuffer ***
 

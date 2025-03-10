@@ -383,7 +383,7 @@ class Tensor(SimpleMathTrait):
     if self.grad is not None and real.grad is not None: self.grad.replace(real.grad)
     return self.replace(real)
 
-  def shard(self, devices:tuple[str, ...], axis:int|None=None) -> Tensor:
+  def shard(self, devices:tuple[str, ...], axis:int|None=None, gather:bool|None=None) -> Tensor:
     """
     Shards the tensor across the given devices. Optionally specify which axis to shard on.
 
@@ -394,14 +394,14 @@ class Tensor(SimpleMathTrait):
     """
     assert isinstance(self.device, str), "can't shard a MultiLazyBuffer"
     devices = tuple(Device.canonicalize(x) for x in devices)
-    mlb = self.lazydata.shard(devices, self._resolve_dim(axis) if axis is not None else None)
+    mlb = self.lazydata.shard(devices, self._resolve_dim(axis) if axis is not None else None, gather)
     return Tensor(mlb, device=devices, requires_grad=self.requires_grad)
 
-  def shard_(self, devices:tuple[str, ...], axis:int|None=None) -> Tensor:
+  def shard_(self, devices:tuple[str, ...], axis:int|None=None, gather:bool|None=None) -> Tensor:
     """
     Shards the tensor across the given devices in place.
     """
-    return self.replace(self.shard(devices, axis))
+    return self.replace(self.shard(devices, axis, gather))
 
   @staticmethod
   def from_uop(y:UOp, **kwargs) -> Tensor:

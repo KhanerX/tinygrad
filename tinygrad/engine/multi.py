@@ -2,6 +2,7 @@ import functools, itertools, operator
 from tinygrad.helpers import all_same, all_int, dedup, prod, DEBUG, RING, getenv
 from tinygrad.ops import Ops, UOp, sint
 
+
 def all_reduce(bop: Ops, lbs: list[UOp]) -> list[UOp]:
   assert all_int(lbs[0].shape), f"does not support symbolic shape {lbs[0].shape}"
   assert all_same([lb.shape[0] for lb in lbs]), "allreduce with uneven shards is undefined"
@@ -157,10 +158,13 @@ multi_pm = PatternMatcher([
         src=(UPat(Ops.MULTI, name="multi"), ), name="root"), passthrough_multi),
 ])
 
-reorder_copies = PatternMatcher([
-  (UPat(Ops.COPY, src=(UPat(), UPat((GroupOp.Movement, GroupOp.ALU, Ops.CAST, Ops.BITCAST), name="copyin")), name='copy'), 
-   lambda copy, copyin: copyin.replace(src=(*[src.copy_to_device(copy.device) for src in copyin.src],))),
+def gather_params(mlb: UOp):
+  if mlb.axis is None or not mlb.arg[2]: return None
+  return UOp.multi(*[copy_multi(mlb, UOp(Ops.DEVICE, arg=lb.device)) for lb in mlb.src], axis=None, real=(any(mlb.real),)*len(mlb.src))
+
+handle_gather = PatternMatcher([
+  (UPat(Ops.MULTI, name='mlb', custom_early_reject=set([Ops.VIEW])), gather_params),
 ])
 
 @track_rewrites(named=True)
-def get_multi_map(big_sink:UOp) -> dict[UOp, UOp]: return {k:v for k,v in graph_rewrite_map(big_sink, multi_pm+reorder_copies).items() if k is not v}
+def get_multi_map(big_sink:UOp) -> dict[UOp, UOp]: return {k:v for k,v in graph_rewrite_map(big_sink, handle_gather+multi_pm).items() if k is not v}
