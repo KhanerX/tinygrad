@@ -162,7 +162,7 @@ def gather_params(mlb: UOp):
   return UOp.multi(*[copy_multi(mlb, UOp(Ops.DEVICE, arg=lb.device)) for lb in mlb.src], axis=None, real=(any(mlb.real),)*len(mlb.src))
 
 handle_gather = PatternMatcher([
-  (UPat(Ops.MULTI, name='mlb', custom_early_reject=set([Ops.VIEW])), gather_params),
+  (UPat(Ops.MULTI, name='mlb'), gather_params),
 ])
 
 @track_rewrites(named=True)
