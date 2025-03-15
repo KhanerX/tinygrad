@@ -158,13 +158,14 @@ multi_pm = PatternMatcher([
 ])
 
 def copy_before_expand(uop:UOp, device:str) -> UOp|None:
-  if uop.op == Ops.COPY:
+  if uop.op in (Ops.COPY, Ops.CONST):
     return None
   if uop.base is not uop:
-    if prod(uop.base.shape) >= prod(uop.shape):
-      return None
-    return uop.replace(src=(uop.src[0].copy_to_device(device),))
-  return uop.replace(src=tuple((ret if (ret := copy_before_expand(src, device)) is not None else src.copy_to_device(device)) for src in uop.src))
+    return None if prod(uop.base.shape) >= prod(uop.shape) else uop.replace(src=(uop.src[0].copy_to_device(device),))
+  src_match = tuple(copy_before_expand(src, device) for src in uop.src)
+  if all(m is None for m in src_match): return None
+  new_src = tuple(m if m is not None else src.copy_to_device(device) for m, src in zip(src_match, uop.src))
+  return uop.replace(src=new_src)
 
 reorder_copies = PatternMatcher([
   (UPat(Ops.COPY, src=(UPat(), UPat((*GroupOp.Movement, *GroupOp.ALU, Ops.CAST, Ops.BITCAST, Ops.DETACH), name="copyin")), name='copy'),
