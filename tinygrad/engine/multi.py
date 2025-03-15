@@ -157,7 +157,7 @@ multi_pm = PatternMatcher([
         src=(UPat(Ops.MULTI, name="multi"), ), name="root"), passthrough_multi),
 ])
 
-def copy_before_expand(uop:UOp, device:str) -> UOp:
+def copy_before_expand(uop:UOp, device:str) -> UOp|None:
   if uop.op == Ops.COPY:
     return None
   if uop.base is not uop:
