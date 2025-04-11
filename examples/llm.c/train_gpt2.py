@@ -147,7 +147,7 @@ if __name__ == "__main__":
   assert 1 <= T <= 1024
 
   default_device = Device.DEFAULT
-  Device.DEFAULT = "CLANG" #initialize the parameters on CPU
+  Device.DEFAULT = "CPU" #initialize the parameters on CPU
   model = GPT(GPTConfig(n_layer=36, n_head=20, n_embd=1280))
   model.load_pretrained()
   optimizer = nn.optim.AdamW(nn.state.get_parameters(model), lr=1e-4, weight_decay=0)
@@ -187,8 +187,8 @@ if __name__ == "__main__":
   data_iter = iter(get_batch())
   x, y = next(data_iter) # we'll overfit this batch below
 
-  x.to_(GPUS)
-  y.to_(GPUS)
+  x.shard_(GPUS, axis=0)
+  y.shard_(GPUS, axis=0)
 
   @TinyJit
   def step(x, y):
